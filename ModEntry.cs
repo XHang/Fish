@@ -2,13 +2,14 @@
 using StardewValley;
 using StardewValley.Menus;
 using Microsoft.Xna.Framework.Input;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace SimpleFishingMod
 {
     public class ModEntry : Mod
     {
-        private bool waitingForKey = false;
-        private double startTime = 0;
+        private bool waitingForMiniGame = false;
 
         private string? pendingFishId = null;
         private int pendingFishQuality = 0;
@@ -28,47 +29,71 @@ namespace SimpleFishingMod
 
         private void OnUpdateTicked(object? sender, StardewModdingAPI.Events.UpdateTickedEventArgs e)
         {
-            // Detect original fishing minigame
-            if (Game1.activeClickableMenu is BobberBar bar && !waitingForKey)
+            //
+            // ① 检测原版钓鱼小游戏 BobberBar
+            //
+            if (Game1.activeClickableMenu is BobberBar bar && !waitingForMiniGame)
             {
-                // ✔ safest and most stable way to get the fish
+                // 读取鱼的信息
                 pendingFishId = bar.whichFish;
                 pendingFishQuality = bar.fishQuality;
 
+                // 裁剪鱼 sprite
+                StardewValley.Object fishObj = new StardewValley.Object(pendingFishId, 1);
+                Rectangle src = Game1.getSourceRectForStandardTileSheet(
+                    Game1.objectSpriteSheet,
+                    fishObj.ParentSheetIndex,
+                    16, 16
+                );
+
+                Texture2D fishTex = new Texture2D(Game1.graphics.GraphicsDevice, 16, 16);
+                Color[] data = new Color[16 * 16];
+                Game1.objectSpriteSheet.GetData(0, src, data, 0, data.Length);
+                fishTex.SetData(data);
+
+                // 关闭原版小游戏
                 Game1.exitActiveMenu();
 
-                waitingForKey = true;
-                startTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
+                // 打开你的自定义小游戏
+                Game1.activeClickableMenu = new FishFightMenu(fishTex);
 
-                Game1.showGlobalMessage("Press 5 within 5 seconds to catch the fish!");
+                waitingForMiniGame = true;
                 return;
             }
 
-            if (waitingForKey)
+            //
+            // ② 检测 FishFightMenu 是否结束
+            //
+            if (waitingForMiniGame && Game1.activeClickableMenu is FishFightMenu fight)
             {
-                double elapsed = Game1.currentGameTime.TotalGameTime.TotalSeconds - startTime;
-
-                if (elapsed > 5)
+                if (fight.Finished)
                 {
-                    waitingForKey = false;
-                    EndFishing();
-                    Game1.showRedMessage("The fish escaped!");
-                    return;
-                }
+                    bool success = fight.Success;
 
-                var state = Keyboard.GetState();
-                if (state.IsKeyDown(Keys.D5) || state.IsKeyDown(Keys.NumPad5))
-                {
-                    waitingForKey = false;
-                    EndFishing();
+                    Game1.exitActiveMenu();
+                    waitingForMiniGame = false;
 
-                    Game1.showGlobalMessage("You caught the fish!");
+                 
+                  
 
-                    if (pendingFishId != null)
+                    if (success)
                     {
-                        Game1.player.addItemToInventory(
-                            new StardewValley.Object(pendingFishId, 1, quality: pendingFishQuality)
-                        );
+                        EndFishing();
+                        Game1.showGlobalMessage("You caught the fish!");
+                      
+
+                        if (pendingFishId != null)
+                        {
+                            Game1.player.addItemToInventory(
+                                new StardewValley.Object(pendingFishId, 1, quality: pendingFishQuality)
+                            );
+                        }
+                    }
+                    else
+                    {
+                        EndFishing();
+                        Game1.showRedMessage("The fish escaped!");
+                        
                     }
 
                     pendingFishId = null;
