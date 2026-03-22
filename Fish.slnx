@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="manifest.json" />
+  </Folder>
+  <Project Path="Fish.csproj" />
+</Solution>

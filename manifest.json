@@ -1,0 +1,9 @@
+{
+  "Name": "Simple Fishing Key Mod",
+  "Author": "LISI",
+  "Version": "1.0.0",
+  "Description": "Replaces the fishing minigame: press 5 within 5 seconds to catch the fish, otherwise it escapes.",
+  "UniqueID": "LISI.SimpleFishingKeyMod",
+  "EntryDll": "Fish.dll",
+  "MinimumApiVersion": "4.0.0"
+}
