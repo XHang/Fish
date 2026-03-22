@@ -10,6 +10,7 @@ namespace SimpleFishingMod
     public class FishFightMenu : IClickableMenu
     {
         private Texture2D fishTexture;
+        private Texture2D backgroundTexture;
         private Rectangle box;
         private Vector2 fishPos;
 
@@ -20,13 +21,19 @@ namespace SimpleFishingMod
         private double phaseStartTime;
 
         private Random rand = new Random();
+        
+        private ModEntry? modEntry;
+        private float waterAnimationTime = 0f;
+        private int frameCounter = 0;
 
         public bool Finished = false;
         public bool Success = false;
 
-        public FishFightMenu(Texture2D fishTex)
+        public FishFightMenu(Texture2D fishTex, Texture2D backgroundTex, ModEntry? modEntry = null)
         {
             fishTexture = fishTex;
+            backgroundTexture = backgroundTex;
+            this.modEntry = modEntry;
 
             box = new Rectangle(400, 200, 300, 300);
             fishPos = new Vector2(box.Center.X, box.Center.Y);
@@ -60,6 +67,21 @@ namespace SimpleFishingMod
             base.update(time);
 
             if (Finished) return;
+
+            // 更新水面动画（每 2 帧更新一次）
+            frameCounter++;
+            if (frameCounter >= 2)
+            {
+                waterAnimationTime += 0.05f;
+                frameCounter = 0;
+                
+                // 直接更新背景纹理的数据，不创建新纹理
+                if (modEntry != null && backgroundTexture != null)
+                {
+                    var colorData = modEntry.GenerateWaterColorData(300, 300, waterAnimationTime);
+                    backgroundTexture.SetData(colorData);
+                }
+            }
 
             double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
 
@@ -130,8 +152,7 @@ namespace SimpleFishingMod
 
         public override void draw(SpriteBatch b)
         {
-            b.Draw(Game1.staminaRect, box, Color.DarkBlue * 0.4f);
-
+            // 先绘制边框
             IClickableMenu.drawTextureBox(
                 b,
                 Game1.menuTexture,
@@ -143,6 +164,9 @@ namespace SimpleFishingMod
                 Color.Green,
                 1f
             );
+
+            // 再在框内绘制水纹理作为背景（覆盖边框内部）
+            b.Draw(backgroundTexture, box, Color.White);
 
             b.Draw(
                 fishTexture,
