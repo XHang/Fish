@@ -1,4 +1,4 @@
-ï»¿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
 using StardewValley.Menus;
@@ -11,9 +11,9 @@ namespace SimpleFishingMod
     public class FishFightMenu : IClickableMenu
     {
         private Texture2D fishTexture;
-        private Texture2D? waterTileTexture;  // ä» beach tileset æå–çš„æ°´é¢è´´å›¾
+        private Texture2D? waterTileTexture;  // ´Ó beach tileset ÌáÈ¡µÄË®ÃæÌùÍ¼
         private Texture2D bobberTexture;
-        private Texture2D bubbleTexture;
+        private Texture2D rippleTexture;
         private Rectangle box;
         private Vector2 fishPos;
 
@@ -27,18 +27,19 @@ namespace SimpleFishingMod
         
         private ModEntry? modEntry;
         private float wobbleTime;
-        private List<BubbleParticle> bubbles = new();
+        private List<RippleParticle> ripples = new();
 
         public bool Finished = false;
         public bool Success = false;
 
-        private class BubbleParticle
+        private class RippleParticle
         {
             public Vector2 Position;
-            public Vector2 Velocity;
-            public float Scale;
             public float Life;
             public float MaxLife;
+            public float StartScale;
+            public float EndScale;
+            public float Rotation;
         }
 
         public FishFightMenu(Texture2D fishTex, Texture2D backgroundTex, ModEntry? modEntry = null)
@@ -46,12 +47,12 @@ namespace SimpleFishingMod
             fishTexture = fishTex;
             this.modEntry = modEntry;
             bobberTexture = CreateBobberTexture();
-            bubbleTexture = CreateBubbleTexture();
+            rippleTexture = CreateRippleTexture();
 
             box = new Rectangle(400, 200, 300, 300);
             fishPos = new Vector2(box.Center.X, box.Center.Y);
 
-            // åŠ è½½å·²æˆªå–çš„æ°´é¢å›¾ç‰‡
+            // ¼ÓÔØÒÑ½ØÈ¡µÄË®ÃæÍ¼Æ¬
             if (modEntry != null)
             {
                 try
@@ -112,20 +113,30 @@ namespace SimpleFishingMod
             return texture;
         }
 
-        private Texture2D CreateBubbleTexture()
+        private Texture2D CreateRippleTexture()
         {
-            Texture2D texture = new Texture2D(Game1.graphics.GraphicsDevice, 8, 8);
-            Color[] data = new Color[8 * 8];
-            Vector2 center = new Vector2(3.5f, 3.5f);
+            const int size = 32;
+            Texture2D texture = new Texture2D(Game1.graphics.GraphicsDevice, size, size);
+            Color[] data = new Color[size * size];
+            Vector2 center = new Vector2((size - 1) / 2f, (size - 1) / 2f);
+            float radius = 11f;
+            float thickness = 1.5f;
 
-            for (int y = 0; y < 8; y++)
+            for (int y = 0; y < size; y++)
             {
-                for (int x = 0; x < 8; x++)
+                for (int x = 0; x < size; x++)
                 {
                     float distance = Vector2.Distance(new Vector2(x, y), center);
-                    data[y * 8 + x] = distance <= 3.2f
-                        ? new Color(220, 245, 255)
-                        : Color.Transparent;
+                    float delta = Math.Abs(distance - radius);
+                    if (delta <= thickness)
+                    {
+                        float alpha = 1f - (delta / thickness);
+                        data[y * size + x] = new Color(220, 245, 255) * alpha;
+                    }
+                    else
+                    {
+                        data[y * size + x] = Color.Transparent;
+                    }
                 }
             }
 
@@ -138,14 +149,14 @@ namespace SimpleFishingMod
             currentPhase = Phase.Struggle;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
 
-            // â­ é±¼é€Ÿåº¦è°ƒæ…¢
+            // ? ÓãËÙ¶Èµ÷Âı
             int dir = rand.Next(3);
             if (dir == 0) fishVelocity = new Vector2(-0.6f, 0);
             if (dir == 1) fishVelocity = new Vector2(0.6f, 0);
             if (dir == 2) fishVelocity = new Vector2(0, -0.6f);
 
-            // â­ ä¸å†é‡ç½®é±¼ä½ç½®ï¼ˆä¿æŒä¸Šä¸€è½®çš„ä½ç½®ï¼‰
-            // fishPos = new Vector2(box.Center.X, box.Center.Y);  <-- åˆ é™¤
+            // ? ²»ÔÙÖØÖÃÓãÎ»ÖÃ£¨±£³ÖÉÏÒ»ÂÖµÄÎ»ÖÃ£©
+            // fishPos = new Vector2(box.Center.X, box.Center.Y);  <-- É¾³ı
         }
 
         private void StartPullPhase()
@@ -162,28 +173,35 @@ namespace SimpleFishingMod
 
             wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
 
-            if (rand.NextDouble() < 0.08)
+            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0.55f;
+            Vector2 bobberOffset = new Vector2(
+                (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength,
+                (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength
+            );
+
+            int spawnCount = currentPhase == Phase.Struggle ? rand.Next(1, 3) : rand.Next(0, 2);
+            for (int s = 0; s < spawnCount; s++)
             {
-                bubbles.Add(new BubbleParticle
+                ripples.Add(new RippleParticle
                 {
-                    Position = fishPos + new Vector2(rand.Next(-10, 11), rand.Next(-6, 7)),
-                    Velocity = new Vector2((float)(rand.NextDouble() - 0.5) * 0.3f, -(0.6f + (float)rand.NextDouble() * 0.7f)),
-                    Scale = 0.5f + (float)rand.NextDouble() * 0.6f,
-                    Life = 0.8f + (float)rand.NextDouble() * 0.6f,
-                    MaxLife = 0.8f + (float)rand.NextDouble() * 0.6f,
+                    Position = fishPos + bobberOffset + new Vector2((float)(rand.NextDouble() - 0.5) * 4f, (float)(rand.NextDouble() - 0.5) * 4f),
+                    Life = 3.22f + (float)rand.NextDouble() * 0.16f,
+                    MaxLife = 8.22f + (float)rand.NextDouble() * 0.16f,
+                    StartScale = 0.15f + (float)rand.NextDouble() * 0.08f,
+                    EndScale = 1.0f + (float)rand.NextDouble() * 0.45f,
+                    Rotation = (float)(rand.NextDouble() * Math.PI * 2),
                 });
             }
 
-            for (int i = bubbles.Count - 1; i >= 0; i--)
+            for (int i = ripples.Count - 1; i >= 0; i--)
             {
-                BubbleParticle bubble = bubbles[i];
-                bubble.Position += bubble.Velocity;
-                bubble.Life -= (float)time.ElapsedGameTime.TotalSeconds;
+                RippleParticle ripple = ripples[i];
+                ripple.Life -= (float)time.ElapsedGameTime.TotalSeconds;
 
-                if (bubble.Life <= 0)
-                    bubbles.RemoveAt(i);
+                if (ripple.Life <= 0)
+                    ripples.RemoveAt(i);
                 else
-                    bubbles[i] = bubble;
+                    ripples[i] = ripple;
             }
 
             double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
@@ -192,7 +210,7 @@ namespace SimpleFishingMod
             {
                 fishPos += fishVelocity;
 
-                // é±¼é€ƒå‡ºæ¡† â†’ å¤±è´¥
+                // ÓãÌÓ³ö¿ò ¡ú Ê§°Ü
                 if (!box.Contains(fishPos))
                 {
                     Finished = true;
@@ -200,7 +218,7 @@ namespace SimpleFishingMod
                     return;
                 }
 
-                // 5 ç§’æŒ£æ‰ç»“æŸ â†’ è¿›å…¥ Pull é˜¶æ®µ
+                // 5 ÃëÕõÔú½áÊø ¡ú ½øÈë Pull ½×¶Î
                 if (elapsed >= 5)
                 {
                     StartPullPhase();
@@ -208,14 +226,14 @@ namespace SimpleFishingMod
             }
             else if (currentPhase == Phase.Pull)
             {
-                // â­ 3 ç§’å†…æ²¡æ‹‰åˆ°åº• â†’ å›åˆ° Struggleï¼ˆå¾ªç¯ï¼‰
+                // ? 3 ÃëÄÚÃ»À­µ½µ× ¡ú »Øµ½ Struggle£¨Ñ­»·£©
                 if (elapsed >= 3)
                 {
                     StartStrugglePhase();
                     return;
                 }
 
-                // æ‹‰åˆ°åº• â†’ æˆåŠŸ
+                // À­µ½µ× ¡ú ³É¹¦
                 if (fishPos.Y >= box.Bottom - 20)
                 {
                     Finished = true;
@@ -231,21 +249,21 @@ namespace SimpleFishingMod
 
             if (currentPhase == Phase.Struggle)
             {
-                // é±¼å¾€å·¦è·‘ â†’ æŒ‰ Right æŠµæŠ—
+                // ÓãÍù×óÅÜ ¡ú °´ Right µÖ¿¹
                 if (fishVelocity.X < 0 && key == Keys.Right)
                     fishPos.X += 4;
 
-                // é±¼å¾€å³è·‘ â†’ æŒ‰ Left æŠµæŠ—
+                // ÓãÍùÓÒÅÜ ¡ú °´ Left µÖ¿¹
                 if (fishVelocity.X > 0 && key == Keys.Left)
                     fishPos.X -= 4;
 
-                // é±¼å¾€ä¸Šè·‘ â†’ æŒ‰ Down æŠµæŠ—
+                // ÓãÍùÉÏÅÜ ¡ú °´ Down µÖ¿¹
                 if (fishVelocity.Y < 0 && key == Keys.Down)
                     fishPos.Y += 4;
             }
             else if (currentPhase == Phase.Pull)
             {
-                // â­ Pull é˜¶æ®µå…è®¸æŒ‰ä»»æ„æ–¹å‘é”®ç§»åŠ¨é±¼
+                // ? Pull ½×¶ÎÔÊĞí°´ÈÎÒâ·½Ïò¼üÒÆ¶¯Óã
                 if (key == Keys.Left) fishPos.X -= 4;
                 if (key == Keys.Right) fishPos.X += 4;
                 if (key == Keys.Up) fishPos.Y -= 4;
@@ -255,7 +273,7 @@ namespace SimpleFishingMod
 
         public override void draw(SpriteBatch b)
         {
-            // ç»˜åˆ¶è¾¹æ¡†
+            // »æÖÆ±ß¿ò
             IClickableMenu.drawTextureBox(
                 b,
                 Game1.menuTexture,
@@ -268,7 +286,7 @@ namespace SimpleFishingMod
                 1f
             );
 
-            // ç›´æ¥ç»˜åˆ¶æ°´é¢çº¹ç†ï¼ˆ300x300ï¼Œæ— éœ€æ‹‰ä¼¸æˆ–å¹³é“ºï¼‰
+            // Ö±½Ó»æÖÆË®ÃæÎÆÀí£¨300x300£¬ÎŞĞèÀ­Éì»òÆ½ÆÌ£©
             if (waterTileTexture != null)
             {
                 b.Draw(
@@ -278,34 +296,37 @@ namespace SimpleFishingMod
                 );
             }
 
-            foreach (BubbleParticle bubble in bubbles)
+            foreach (RippleParticle ripple in ripples)
             {
-                float alpha = MathHelper.Clamp(bubble.Life / bubble.MaxLife, 0f, 1f);
+                float progress = 1f - MathHelper.Clamp(ripple.Life / ripple.MaxLife, 0f, 1f);
+                float alpha = (1f - progress) * 0.85f;
+                float scale = MathHelper.Lerp(ripple.StartScale, ripple.EndScale, progress);
                 b.Draw(
-                    bubbleTexture,
-                    bubble.Position,
+                    rippleTexture,
+                    ripple.Position,
                     null,
                     Color.White * alpha,
-                    0f,
-                    new Vector2(4f, 4f),
-                    bubble.Scale,
+                    ripple.Rotation,
+                    new Vector2(rippleTexture.Width / 2f, rippleTexture.Height / 2f),
+                    scale,
                     SpriteEffects.None,
                     1f
                 );
             }
 
+            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0.55f;
             Vector2 bobberOffset = new Vector2(
-                (float)Math.Sin(wobbleTime * 10f) * 2f,
-                (float)Math.Cos(wobbleTime * 14f) * 1.5f
+                (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength,
+                (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength
             );
 
-            // ç»˜åˆ¶æµ®æ ‡
+            // »æÖÆ¸¡±ê
             b.Draw(
                 bobberTexture,
                 fishPos + bobberOffset,
                 null,
                 Color.White,
-                (float)Math.Sin(wobbleTime * 8f) * 0.08f,
+                (float)Math.Sin(wobbleTime * 34f) * 0.08f * wobbleStrength,
                 new Vector2(bobberTexture.Width / 2f, bobberTexture.Height / 2f),
                 2f,
                 SpriteEffects.None,

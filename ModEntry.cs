@@ -87,7 +87,7 @@ namespace SimpleFishingMod
                 Game1.exitActiveMenu();
 
                 // 打开你的自定义小游戏，传入 water 背景纹理和 ModEntry 引用
-                this.Monitor.Log("Creating FishFightMenu...", LogLevel.Info);
+                this.Monitor.Log("Creating FishFightMenu.123..", LogLevel.Info);
                 Game1.activeClickableMenu = new FishFightMenu(fishTex, waterTexture!, this);
 
                 waitingForMiniGame = true;
