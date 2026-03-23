@@ -15,7 +15,7 @@ namespace SimpleFishingMod
         private Texture2D bobberTexture;
         private Texture2D rippleTexture;
         private Rectangle box;
-        private Vector2 fishPos;
+        private Vector2 bobberPos;
 
         private enum Phase { Struggle, Pull }
         private Phase currentPhase = Phase.Struggle;
@@ -50,7 +50,7 @@ namespace SimpleFishingMod
             rippleTexture = CreateRippleTexture();
 
             box = new Rectangle(400, 200, 300, 300);
-            fishPos = new Vector2(box.Center.X, box.Center.Y);
+            bobberPos = new Vector2(box.Center.X, box.Center.Y);
 
             // 加载已截取的水面图片
             if (modEntry != null)
@@ -184,7 +184,7 @@ namespace SimpleFishingMod
             {
                 ripples.Add(new RippleParticle
                 {
-                    Position = fishPos + bobberOffset + new Vector2((float)(rand.NextDouble() - 0.5) * 4f, (float)(rand.NextDouble() - 0.5) * 4f),
+                    Position = bobberPos + bobberOffset + new Vector2((float)(rand.NextDouble() - 0.5) * 4f, (float)(rand.NextDouble() - 0.5) * 4f),
                     Life = 3.22f + (float)rand.NextDouble() * 0.16f,
                     MaxLife = 8.22f + (float)rand.NextDouble() * 0.16f,
                     StartScale = 0.15f + (float)rand.NextDouble() * 0.08f,
@@ -208,10 +208,10 @@ namespace SimpleFishingMod
 
             if (currentPhase == Phase.Struggle)
             {
-                fishPos += fishVelocity;
+                bobberPos += fishVelocity;
 
                 // 鱼逃出框 → 失败
-                if (!box.Contains(fishPos))
+                if (!box.Contains(bobberPos))
                 {
                     Finished = true;
                     Success = false;
@@ -234,7 +234,7 @@ namespace SimpleFishingMod
                 }
 
                 // 拉到底 → 成功
-                if (fishPos.Y >= box.Bottom - 20)
+                if (bobberPos.Y >= box.Bottom - 20)
                 {
                     Finished = true;
                     Success = true;
@@ -251,23 +251,23 @@ namespace SimpleFishingMod
             {
                 // 鱼往左跑 → 按 Right 抵抗
                 if (fishVelocity.X < 0 && key == Keys.Right)
-                    fishPos.X += 4;
+                    bobberPos.X += 4;
 
                 // 鱼往右跑 → 按 Left 抵抗
                 if (fishVelocity.X > 0 && key == Keys.Left)
-                    fishPos.X -= 4;
+                    bobberPos.X -= 4;
 
                 // 鱼往上跑 → 按 Down 抵抗
                 if (fishVelocity.Y < 0 && key == Keys.Down)
-                    fishPos.Y += 4;
+                    bobberPos.Y += 4;
             }
             else if (currentPhase == Phase.Pull)
             {
                 // ? Pull 阶段允许按任意方向键移动鱼
-                if (key == Keys.Left) fishPos.X -= 4;
-                if (key == Keys.Right) fishPos.X += 4;
-                if (key == Keys.Up) fishPos.Y -= 4;
-                if (key == Keys.Down) fishPos.Y += 4;
+                if (key == Keys.Left) bobberPos.X -= 4;
+                if (key == Keys.Right) bobberPos.X += 4;
+                if (key == Keys.Up) bobberPos.Y -= 4;
+                if (key == Keys.Down) bobberPos.Y += 4;
             }
         }
 
@@ -320,10 +320,13 @@ namespace SimpleFishingMod
                 (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength
             );
 
+            Vector2 bobberDrawPos = bobberPos + bobberOffset;
+            Vector2 fishDrawPos = bobberDrawPos + new Vector2(0f, 34f);
+
             // 绘制浮标
             b.Draw(
                 bobberTexture,
-                fishPos + bobberOffset,
+                bobberDrawPos,
                 null,
                 Color.White,
                 (float)Math.Sin(wobbleTime * 34f) * 0.08f * wobbleStrength,
@@ -332,6 +335,37 @@ namespace SimpleFishingMod
                 SpriteEffects.None,
                 1f
             );
+
+            Rectangle fishBounds = new Rectangle(
+                (int)(fishDrawPos.X - fishTexture.Width),
+                (int)(fishDrawPos.Y - fishTexture.Height),
+                fishTexture.Width * 2,
+                fishTexture.Height * 2
+            );
+            Rectangle clippedFishBounds = Rectangle.Intersect(fishBounds, box);
+
+            if (clippedFishBounds.Width > 0 && clippedFishBounds.Height > 0)
+            {
+                float scale = 2f;
+                Vector2 fishTopLeft = new Vector2(fishDrawPos.X - fishTexture.Width, fishDrawPos.Y - fishTexture.Height);
+                Rectangle source = new Rectangle(
+                    (int)((clippedFishBounds.X - fishTopLeft.X) / scale),
+                    (int)((clippedFishBounds.Y - fishTopLeft.Y) / scale),
+                    Math.Min(fishTexture.Width, (int)Math.Ceiling(clippedFishBounds.Width / scale)),
+                    Math.Min(fishTexture.Height, (int)Math.Ceiling(clippedFishBounds.Height / scale))
+                );
+
+                b.Draw(
+                    fishTexture,
+                    clippedFishBounds,
+                    source,
+                    Color.White,
+                    0f,
+                    Vector2.Zero,
+                    SpriteEffects.None,
+                    1f
+                );
+            }
 
             base.draw(b);
         }
