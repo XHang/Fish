@@ -4,6 +4,7 @@ using StardewValley;
 using StardewValley.Menus;
 using Microsoft.Xna.Framework.Input;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace SimpleFishingMod
@@ -165,6 +166,58 @@ namespace SimpleFishingMod
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
         }
 
+        private bool IsConfiguredMoveKey(string bindingName, Keys key)
+        {
+            object? value = Game1.options.GetType().GetField(bindingName)?.GetValue(Game1.options)
+                ?? Game1.options.GetType().GetProperty(bindingName)?.GetValue(Game1.options);
+
+            if (value is not IEnumerable entries)
+                return false;
+
+            foreach (object? entry in entries)
+            {
+                if (entry == null)
+                    continue;
+
+                if (EntryMatchesKey(entry, key))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool EntryMatchesKey(object entry, Keys key)
+        {
+            string keyName = key.ToString();
+            string text = entry.ToString() ?? string.Empty;
+
+            if (text.Equals(keyName, StringComparison.OrdinalIgnoreCase)
+                || text.EndsWith($".{keyName}", StringComparison.OrdinalIgnoreCase)
+                || text.Contains($"{keyName}", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            foreach (string memberName in new[] { "Key", "Button", "button", "key" })
+            {
+                object? memberValue = entry.GetType().GetProperty(memberName)?.GetValue(entry)
+                    ?? entry.GetType().GetField(memberName)?.GetValue(entry);
+
+                if (memberValue != null && memberValue.ToString() == keyName)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private bool IsMoveLeftKey(Keys key) => IsConfiguredMoveKey("moveLeftButton", key);
+
+        private bool IsMoveRightKey(Keys key) => IsConfiguredMoveKey("moveRightButton", key);
+
+        private bool IsMoveUpKey(Keys key) => IsConfiguredMoveKey("moveUpButton", key);
+
+        private bool IsMoveDownKey(Keys key) => IsConfiguredMoveKey("moveDownButton", key);
+
         public override void update(GameTime time)
         {
             base.update(time);
@@ -249,18 +302,17 @@ namespace SimpleFishingMod
 
             if (currentPhase == Phase.Struggle)
             {
-                if (key == Keys.Left) bobberPos.X -= 4;
-                if (key == Keys.Right) bobberPos.X += 4;
-                if (key == Keys.Up) bobberPos.Y -= 4;
-                if (key == Keys.Down) bobberPos.Y += 4;
+                if (IsMoveLeftKey(key)) bobberPos.X -= 4;
+                if (IsMoveRightKey(key)) bobberPos.X += 4;
+                if (IsMoveUpKey(key)) bobberPos.Y -= 4;
+                if (IsMoveDownKey(key)) bobberPos.Y += 4;
             }
             else if (currentPhase == Phase.Pull)
             {
-                // ? Pull 阶段允许按任意方向键移动鱼
-                if (key == Keys.Left) bobberPos.X -= 4;
-                if (key == Keys.Right) bobberPos.X += 4;
-                if (key == Keys.Up) bobberPos.Y -= 4;
-                if (key == Keys.Down) bobberPos.Y += 4;
+                if (IsMoveLeftKey(key)) bobberPos.X -= 4;
+                if (IsMoveRightKey(key)) bobberPos.X += 4;
+                if (IsMoveUpKey(key)) bobberPos.Y -= 4;
+                if (IsMoveDownKey(key)) bobberPos.Y += 4;
             }
         }
 
