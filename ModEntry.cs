@@ -7,11 +7,13 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.IO;
 using System.Reflection;
+using HarmonyLib;
 
 namespace SimpleFishingMod
 {
     public class ModEntry : Mod
     {
+        private static ModEntry? Instance;
         private bool waitingForMiniGame = false;
 
         private Texture2D? waterTexture = null;
@@ -24,9 +26,13 @@ namespace SimpleFishingMod
         
         private IModHelper? helper = null;
 
+        internal static bool HideVanillaBobberBar => Instance != null && (Instance.waitingForMiniGame || Instance.resolvingBobberBar || Instance.pendingBobberBarResult.HasValue);
+
         public override void Entry(IModHelper helper)
         {
+            Instance = this;
             this.helper = helper;
+            new Harmony(this.ModManifest.UniqueID).PatchAll();
             
             // 直接加载 water.png
             try
@@ -166,6 +172,15 @@ namespace SimpleFishingMod
                     pendingFishId = null;
                 }
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(BobberBar), nameof(BobberBar.draw))]
+    internal static class BobberBarDrawPatch
+    {
+        public static bool Prefix()
+        {
+            return !ModEntry.HideVanillaBobberBar;
         }
     }
 }
