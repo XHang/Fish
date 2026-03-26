@@ -249,17 +249,10 @@ namespace SimpleFishingMod
 
             if (currentPhase == Phase.Struggle)
             {
-                // ÓãÍù×óÅÜ ¡ú °´ Right µÖ¿¹
-                if (fishVelocity.X < 0 && key == Keys.Right)
-                    bobberPos.X += 4;
-
-                // ÓãÍùÓÒÅÜ ¡ú °´ Left µÖ¿¹
-                if (fishVelocity.X > 0 && key == Keys.Left)
-                    bobberPos.X -= 4;
-
-                // ÓãÍùÉÏÅÜ ¡ú °´ Down µÖ¿¹
-                if (fishVelocity.Y < 0 && key == Keys.Down)
-                    bobberPos.Y += 4;
+                if (key == Keys.Left) bobberPos.X -= 4;
+                if (key == Keys.Right) bobberPos.X += 4;
+                if (key == Keys.Up) bobberPos.Y -= 4;
+                if (key == Keys.Down) bobberPos.Y += 4;
             }
             else if (currentPhase == Phase.Pull)
             {
