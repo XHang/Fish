@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.IO;
+using System.Reflection;
 
 namespace SimpleFishingMod
 {
@@ -14,6 +15,9 @@ namespace SimpleFishingMod
         private bool waitingForMiniGame = false;
 
         private Texture2D? waterTexture = null;
+        private BobberBar? suspendedBobberBar = null;
+        private bool? pendingBobberBarResult = null;
+        private bool resolvingBobberBar = false;
 
         private string? pendingFishId = null;
         private int pendingFishQuality = 0;
@@ -51,13 +55,53 @@ namespace SimpleFishingMod
             Game1.player.Halt();
         }
 
+        private void ForceBobberBarResult(BobberBar bar, bool success)
+        {
+            try
+            {
+                FieldInfo? distanceField = typeof(BobberBar).GetField("distanceFromCatching", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (distanceField?.FieldType == typeof(float))
+                {
+                    distanceField.SetValue(bar, success ? 1.05f : -0.05f);
+                }
+
+                bar.update(Game1.currentGameTime);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Failed to force BobberBar result: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
         private void OnUpdateTicked(object? sender, StardewModdingAPI.Events.UpdateTickedEventArgs e)
         {
+            if (resolvingBobberBar)
+            {
+                if (pendingBobberBarResult.HasValue && Game1.activeClickableMenu is BobberBar resolvingBar)
+                {
+                    ForceBobberBarResult(resolvingBar, pendingBobberBarResult.Value);
+                    return;
+                }
+
+                resolvingBobberBar = false;
+                pendingBobberBarResult = null;
+            }
+
+            if (pendingBobberBarResult.HasValue && Game1.activeClickableMenu is BobberBar restoredBar)
+            {
+                ForceBobberBarResult(restoredBar, pendingBobberBarResult.Value);
+                resolvingBobberBar = true;
+                return;
+            }
+
             //
             // ① 检测原版钓鱼小游戏 BobberBar
             //
             if (Game1.activeClickableMenu is BobberBar bar && !waitingForMiniGame)
             {
+                if (resolvingBobberBar)
+                    return;
+
                 if (waterTexture == null)
                 {
                     this.Monitor.Log("waterTexture is null!", LogLevel.Error);
@@ -83,11 +127,10 @@ namespace SimpleFishingMod
                 Game1.objectSpriteSheet.GetData(0, src, data, 0, data.Length);
                 fishTex.SetData(data);
 
-                // 关闭原版小游戏
-                Game1.exitActiveMenu();
+                suspendedBobberBar = bar;
 
                 // 打开你的自定义小游戏，传入 water 背景纹理和 ModEntry 引用
-                this.Monitor.Log("Creating FishFightMenu.123..", LogLevel.Info);
+                this.Monitor.Log("Creating FishFightMenu...", LogLevel.Info);
                 Game1.activeClickableMenu = new FishFightMenu(fishTex, waterTexture!, this);
 
                 waitingForMiniGame = true;
@@ -103,30 +146,21 @@ namespace SimpleFishingMod
                 {
                     bool success = fight.Success;
 
-                    Game1.exitActiveMenu();
                     waitingForMiniGame = false;
 
-                 
-                  
-
-                    if (success)
+                    if (suspendedBobberBar != null)
                     {
-                        EndFishing();
-                        Game1.showGlobalMessage("You caught the fish!");
-                      
-
-                        if (pendingFishId != null)
-                        {
-                            Game1.player.addItemToInventory(
-                                new StardewValley.Object(pendingFishId, 1, quality: pendingFishQuality)
-                            );
-                        }
+                        Game1.activeClickableMenu = suspendedBobberBar;
+                        pendingBobberBarResult = success;
+                        suspendedBobberBar = null;
                     }
                     else
                     {
-                        EndFishing();
-                        Game1.showRedMessage("The fish escaped!");
-                        
+                        Game1.exitActiveMenu();
+                        if (success)
+                            Game1.showGlobalMessage("You caught the fish!");
+                        else
+                            Game1.showRedMessage("The fish escaped!");
                     }
 
                     pendingFishId = null;
