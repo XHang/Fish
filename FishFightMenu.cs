@@ -369,6 +369,14 @@ namespace SimpleFishingMod
 
                 bobberPos += fishVelocity;
 
+                // 只要触到底边，直接判定成功
+                if (bobberPos.Y >= box.Bottom - 20)
+                {
+                    Finished = true;
+                    Success = true;
+                    return;
+                }
+
                 // 鱼逃出框 → 失败
                 if (!box.Contains(bobberPos))
                 {
