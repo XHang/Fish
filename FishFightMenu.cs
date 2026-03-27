@@ -28,6 +28,8 @@ namespace SimpleFishingMod
         
         private ModEntry? modEntry;
         private float wobbleTime;
+        private float struggleSoundCooldown;
+        private float pullSoundCooldown;
         private List<RippleParticle> ripples = new();
 
         public bool Finished = false;
@@ -149,6 +151,7 @@ namespace SimpleFishingMod
         {
             currentPhase = Phase.Struggle;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
+            struggleSoundCooldown = 0f;
 
             // ? 鱼速度调慢
             int dir = rand.Next(3);
@@ -164,6 +167,7 @@ namespace SimpleFishingMod
         {
             currentPhase = Phase.Pull;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
+            pullSoundCooldown = 0f;
         }
 
         private bool IsConfiguredMoveKey(string bindingName, Keys key)
@@ -218,11 +222,53 @@ namespace SimpleFishingMod
 
         private bool IsMoveDownKey(Keys key) => IsConfiguredMoveKey("moveDownButton", key);
 
+        private bool TryGetConfiguredKey(object entry, out Keys configuredKey)
+        {
+            foreach (string memberName in new[] { "Key", "Button", "button", "key" })
+            {
+                object? memberValue = entry.GetType().GetProperty(memberName)?.GetValue(entry)
+                    ?? entry.GetType().GetField(memberName)?.GetValue(entry);
+
+                if (memberValue != null && Enum.TryParse(memberValue.ToString(), true, out configuredKey))
+                    return true;
+            }
+
+            string text = entry.ToString() ?? string.Empty;
+            if (text.Contains('.'))
+                text = text[(text.LastIndexOf('.') + 1)..];
+
+            return Enum.TryParse(text, true, out configuredKey);
+        }
+
+        private bool IsConfiguredMoveKeyHeld(string bindingName)
+        {
+            object? value = Game1.options.GetType().GetField(bindingName)?.GetValue(Game1.options)
+                ?? Game1.options.GetType().GetProperty(bindingName)?.GetValue(Game1.options);
+
+            if (value is not IEnumerable entries)
+                return false;
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            foreach (object? entry in entries)
+            {
+                if (entry != null && TryGetConfiguredKey(entry, out Keys configuredKey) && keyboardState.IsKeyDown(configuredKey))
+                    return true;
+            }
+
+            return false;
+        }
+
         public override void update(GameTime time)
         {
             base.update(time);
 
             if (Finished) return;
+
+            float elapsedSeconds = (float)time.ElapsedGameTime.TotalSeconds;
+            if (struggleSoundCooldown > 0f)
+                struggleSoundCooldown -= elapsedSeconds;
+            if (pullSoundCooldown > 0f)
+                pullSoundCooldown -= elapsedSeconds;
 
             wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
 
@@ -261,6 +307,12 @@ namespace SimpleFishingMod
 
             if (currentPhase == Phase.Struggle)
             {
+                if (struggleSoundCooldown <= 0f)
+                {
+                    Game1.playSound("waterSlosh");
+                    struggleSoundCooldown = 0.22f;
+                }
+
                 bobberPos += fishVelocity;
 
                 // 鱼逃出框 → 失败
@@ -279,6 +331,14 @@ namespace SimpleFishingMod
             }
             else if (currentPhase == Phase.Pull)
             {
+                bool isPullingDown = IsConfiguredMoveKeyHeld("moveDownButton");
+
+                if (isPullingDown && pullSoundCooldown <= 0f)
+                {
+                    Game1.playSound("fishingRodBend");
+                    pullSoundCooldown = 0.08f;
+                }
+
                 // ? 3 秒内没拉到底 → 回到 Struggle（循环）
                 if (elapsed >= 3)
                 {
