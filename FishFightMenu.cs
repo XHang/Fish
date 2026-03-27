@@ -60,7 +60,7 @@ namespace SimpleFishingMod
             this.treasureAvailable = treasureAvailable;
             bobberTexture = CreateBobberTexture();
             rippleTexture = CreateRippleTexture();
-            treasureTexture = modEntry?.GetTreasureTexture() ?? CreateTreasureTexture();
+            treasureTexture = modEntry?.GetTreasureTexture() ?? throw new InvalidOperationException("treasure.png was not loaded.");
 
             box = new Rectangle(400, 200, 300, 300);
             bobberPos = new Vector2(box.Center.X, box.Center.Y);
@@ -137,41 +137,6 @@ namespace SimpleFishingMod
             b.Draw(Game1.staminaRect, new Rectangle(x - 2, y - 2, width + 4, height + 4), Color.Black * 0.65f);
             b.Draw(Game1.staminaRect, new Rectangle(x, y, width, height), Color.DarkSlateGray * 0.85f);
             b.Draw(Game1.staminaRect, new Rectangle(x, y, (int)(width * progress), height), Color.Gold);
-        }
-
-        private Texture2D CreateTreasureTexture()
-        {
-            const int size = 24;
-            Texture2D texture = new Texture2D(Game1.graphics.GraphicsDevice, size, size);
-            Color[] data = new Color[size * size];
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    Color color = Color.Transparent;
-
-                    if (x >= 3 && x <= 20 && y >= 6 && y <= 18)
-                        color = new Color(138, 85, 35);
-                    if (x >= 3 && x <= 20 && y >= 6 && y <= 8)
-                        color = new Color(165, 104, 48);
-                    if (x >= 4 && x <= 19 && y >= 9 && y <= 17)
-                        color = new Color(108, 62, 24);
-                    if ((x == 11 || x == 12) && y >= 6 && y <= 18)
-                        color = new Color(225, 190, 60);
-                    if ((y == 11 || y == 12) && x >= 4 && x <= 19)
-                        color = new Color(225, 190, 60);
-                    if ((x == 3 || x == 20) && y >= 6 && y <= 18)
-                        color = new Color(62, 38, 15);
-                    if (y == 5 && x >= 5 && x <= 18)
-                        color = new Color(194, 152, 78);
-
-                    data[y * size + x] = color;
-                }
-            }
-
-            texture.SetData(data);
-            return texture;
         }
 
         private Texture2D CreateRippleTexture()
@@ -342,7 +307,7 @@ namespace SimpleFishingMod
 
             wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
 
-            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0.55f;
+            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0f;
             Vector2 bobberOffset = new Vector2(
                 (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength,
                 (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength
@@ -520,7 +485,7 @@ namespace SimpleFishingMod
                 );
             }
 
-            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0.55f;
+            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0f;
             Vector2 bobberOffset = new Vector2(
                 (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength,
                 (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength

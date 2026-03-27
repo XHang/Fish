@@ -46,6 +46,16 @@ namespace SimpleFishingMod
             {
                 this.Monitor.Log($"Error loading water.png: {ex.Message}", LogLevel.Error);
             }
+
+            try
+            {
+                treasureTexture = helper.ModContent.Load<Texture2D>("assets/treasure.png");
+                this.Monitor.Log($"✓ Loaded treasure.png: {treasureTexture.Width}x{treasureTexture.Height}", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Error loading treasure.png: {ex.Message}", LogLevel.Error);
+            }
             
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         }
@@ -86,28 +96,6 @@ namespace SimpleFishingMod
         {
             if (pendingFishId == null)
                 return;
-
-            StardewValley.Object caughtFish = new StardewValley.Object(pendingFishId, 1, quality: pendingFishQuality);
-            Game1.player.addItemToInventory(caughtFish);
-
-            try
-            {
-                Game1.player.caughtFish(pendingFishId, 0, from_fish_pond: false, 1);
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log($"Failed to register caught fish: {ex.Message}", LogLevel.Warn);
-            }
-
-            try
-            {
-                int exp = Math.Max(3, Math.Min(25, caughtFish.sellToStorePrice() / 3));
-                Game1.player.gainExperience(1, exp);
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log($"Failed to grant fishing experience: {ex.Message}", LogLevel.Warn);
-            }
         }
 
         private void SetBobberTreasureCollected(BobberBar bar, bool collected)
