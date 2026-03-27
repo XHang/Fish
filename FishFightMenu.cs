@@ -15,6 +15,7 @@ namespace SimpleFishingMod
         private Texture2D? waterTileTexture;  // 从 beach tileset 提取的水面贴图
         private Texture2D bobberTexture;
         private Texture2D rippleTexture;
+        private Texture2D treasureTexture;
         private Rectangle box;
         private Vector2 bobberPos;
 
@@ -31,9 +32,16 @@ namespace SimpleFishingMod
         private float struggleSoundCooldown;
         private float pullSoundCooldown;
         private List<RippleParticle> ripples = new();
+        private readonly bool treasureAvailable;
+        private bool treasureSpawned;
+        private bool treasureCollected;
+        private Vector2 treasurePos;
+        private float treasureHoldTime;
+        private const float TreasureHoldSeconds = 3f;
 
         public bool Finished = false;
         public bool Success = false;
+        public bool TreasureCollected => treasureCollected;
 
         private class RippleParticle
         {
@@ -45,12 +53,14 @@ namespace SimpleFishingMod
             public float Rotation;
         }
 
-        public FishFightMenu(Texture2D fishTex, Texture2D backgroundTex, ModEntry? modEntry = null)
+        public FishFightMenu(Texture2D fishTex, Texture2D backgroundTex, ModEntry? modEntry = null, bool treasureAvailable = false)
         {
             fishTexture = fishTex;
             this.modEntry = modEntry;
+            this.treasureAvailable = treasureAvailable;
             bobberTexture = CreateBobberTexture();
             rippleTexture = CreateRippleTexture();
+            treasureTexture = modEntry?.GetTreasureTexture() ?? CreateTreasureTexture();
 
             box = new Rectangle(400, 200, 300, 300);
             bobberPos = new Vector2(box.Center.X, box.Center.Y);
@@ -116,6 +126,54 @@ namespace SimpleFishingMod
             return texture;
         }
 
+        private void DrawProgressBar(SpriteBatch b, Vector2 center, float progress)
+        {
+            progress = MathHelper.Clamp(progress, 0f, 1f);
+            int width = 64;
+            int height = 8;
+            int x = (int)center.X - width / 2;
+            int y = (int)center.Y - 32;
+
+            b.Draw(Game1.staminaRect, new Rectangle(x - 2, y - 2, width + 4, height + 4), Color.Black * 0.65f);
+            b.Draw(Game1.staminaRect, new Rectangle(x, y, width, height), Color.DarkSlateGray * 0.85f);
+            b.Draw(Game1.staminaRect, new Rectangle(x, y, (int)(width * progress), height), Color.Gold);
+        }
+
+        private Texture2D CreateTreasureTexture()
+        {
+            const int size = 24;
+            Texture2D texture = new Texture2D(Game1.graphics.GraphicsDevice, size, size);
+            Color[] data = new Color[size * size];
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    Color color = Color.Transparent;
+
+                    if (x >= 3 && x <= 20 && y >= 6 && y <= 18)
+                        color = new Color(138, 85, 35);
+                    if (x >= 3 && x <= 20 && y >= 6 && y <= 8)
+                        color = new Color(165, 104, 48);
+                    if (x >= 4 && x <= 19 && y >= 9 && y <= 17)
+                        color = new Color(108, 62, 24);
+                    if ((x == 11 || x == 12) && y >= 6 && y <= 18)
+                        color = new Color(225, 190, 60);
+                    if ((y == 11 || y == 12) && x >= 4 && x <= 19)
+                        color = new Color(225, 190, 60);
+                    if ((x == 3 || x == 20) && y >= 6 && y <= 18)
+                        color = new Color(62, 38, 15);
+                    if (y == 5 && x >= 5 && x <= 18)
+                        color = new Color(194, 152, 78);
+
+                    data[y * size + x] = color;
+                }
+            }
+
+            texture.SetData(data);
+            return texture;
+        }
+
         private Texture2D CreateRippleTexture()
         {
             const int size = 32;
@@ -168,6 +226,18 @@ namespace SimpleFishingMod
             currentPhase = Phase.Pull;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
             pullSoundCooldown = 0f;
+
+            if (treasureAvailable && !treasureSpawned && !treasureCollected)
+            {
+                treasureSpawned = true;
+                treasureHoldTime = 0f;
+
+                float margin = 40f;
+                treasurePos = new Vector2(
+                    rand.Next((int)box.Left + (int)margin, (int)box.Right - (int)margin),
+                    rand.Next((int)box.Top + (int)margin, (int)box.Bottom - (int)margin)
+                );
+            }
         }
 
         private bool IsConfiguredMoveKey(string bindingName, Keys key)
@@ -339,6 +409,23 @@ namespace SimpleFishingMod
                     pullSoundCooldown = 0.08f;
                 }
 
+                if (treasureSpawned && !treasureCollected)
+                {
+                    Rectangle treasureRect = new Rectangle((int)treasurePos.X - 12, (int)treasurePos.Y - 12, 24, 24);
+                    Rectangle bobberRect = new Rectangle((int)bobberPos.X - 12, (int)bobberPos.Y - 12, 24, 24);
+
+                    if (treasureRect.Intersects(bobberRect))
+                        treasureHoldTime += (float)time.ElapsedGameTime.TotalSeconds;
+                    else
+                        treasureHoldTime = 0f;
+
+                    if (treasureHoldTime >= TreasureHoldSeconds)
+                    {
+                        treasureCollected = true;
+                        Game1.playSound("newArtifact");
+                    }
+                }
+
                 // ? 3 秒内没拉到底 → 回到 Struggle（循环）
                 if (elapsed >= 3)
                 {
@@ -353,6 +440,13 @@ namespace SimpleFishingMod
                     Success = true;
                     return;
                 }
+
+            if (treasureSpawned && !treasureCollected)
+            {
+                // treasure disappears if not collected during this pull window
+                if (currentPhase != Phase.Pull)
+                    treasureSpawned = false;
+            }
             }
         }
 
@@ -399,6 +493,13 @@ namespace SimpleFishingMod
                     box,
                     Color.White
                 );
+            }
+
+            if (treasureSpawned && !treasureCollected)
+            {
+                Vector2 treasureDrawPos = new Vector2(treasurePos.X - treasureTexture.Width / 2f, treasurePos.Y - treasureTexture.Height / 2f);
+                b.Draw(treasureTexture, treasureDrawPos, Color.White);
+                DrawProgressBar(b, treasurePos, treasureHoldTime / TreasureHoldSeconds);
             }
 
             foreach (RippleParticle ripple in ripples)

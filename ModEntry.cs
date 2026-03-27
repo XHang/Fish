@@ -17,9 +17,11 @@ namespace SimpleFishingMod
         private bool waitingForMiniGame = false;
 
         private Texture2D? waterTexture = null;
+        private Texture2D? treasureTexture = null;
         private BobberBar? suspendedBobberBar = null;
         private bool? pendingBobberBarResult = null;
         private bool resolvingBobberBar = false;
+        private bool pendingTreasure = false;
 
         private string? pendingFishId = null;
         private int pendingFishQuality = 0;
@@ -53,12 +55,72 @@ namespace SimpleFishingMod
             return waterTexture;
         }
 
+        public Texture2D? GetTreasureTexture()
+        {
+            return treasureTexture;
+        }
+
         private void EndFishing()
         {
             Game1.player.completelyStopAnimatingOrDoingAction();
             Game1.player.UsingTool = false;
             Game1.player.CanMove = true;
             Game1.player.Halt();
+        }
+
+        private bool GetBobberTreasureFlag(BobberBar bar)
+        {
+            foreach (string name in new[] { "treasure", "hasTreasure", "showTreasure", "treasureCaught" })
+            {
+                object? value = bar.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(bar)
+                    ?? bar.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetValue(bar);
+
+                if (value is bool b)
+                    return b;
+            }
+
+            return false;
+        }
+
+        private void ApplyCatchEffects(bool treasureCollected)
+        {
+            if (pendingFishId == null)
+                return;
+
+            StardewValley.Object caughtFish = new StardewValley.Object(pendingFishId, 1, quality: pendingFishQuality);
+            Game1.player.addItemToInventory(caughtFish);
+
+            try
+            {
+                Game1.player.caughtFish(pendingFishId, 0, from_fish_pond: false, 1);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Failed to register caught fish: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
+                int exp = Math.Max(3, Math.Min(25, caughtFish.sellToStorePrice() / 3));
+                Game1.player.gainExperience(1, exp);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Failed to grant fishing experience: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void SetBobberTreasureCollected(BobberBar bar, bool collected)
+        {
+            foreach (string name in new[] { "treasureCaught", "treasureCollected", "gotTreasure", "showTreasure" })
+            {
+                FieldInfo? field = typeof(BobberBar).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+                if (field?.FieldType == typeof(bool))
+                {
+                    field.SetValue(bar, collected);
+                    return;
+                }
+            }
         }
 
         private void ForceBobberBarResult(BobberBar bar, bool success)
@@ -119,6 +181,7 @@ namespace SimpleFishingMod
                 // 读取鱼的信息
                 pendingFishId = bar.whichFish;
                 pendingFishQuality = bar.fishQuality;
+                pendingTreasure = GetBobberTreasureFlag(bar);
 
                 // 裁剪鱼 sprite
                 StardewValley.Object fishObj = new StardewValley.Object(pendingFishId, 1);
@@ -137,7 +200,7 @@ namespace SimpleFishingMod
 
                 // 打开你的自定义小游戏，传入 water 背景纹理和 ModEntry 引用
                 this.Monitor.Log("Creating FishFightMenu...", LogLevel.Info);
-                Game1.activeClickableMenu = new FishFightMenu(fishTex, waterTexture!, this);
+                Game1.activeClickableMenu = new FishFightMenu(fishTex, waterTexture!, this, pendingTreasure);
 
                 waitingForMiniGame = true;
                 return;
@@ -156,6 +219,9 @@ namespace SimpleFishingMod
 
                     if (suspendedBobberBar != null)
                     {
+                        if (success)
+                            SetBobberTreasureCollected(suspendedBobberBar, fight.TreasureCollected);
+
                         Game1.activeClickableMenu = suspendedBobberBar;
                         pendingBobberBarResult = success;
                         suspendedBobberBar = null;
@@ -169,7 +235,11 @@ namespace SimpleFishingMod
                             Game1.showRedMessage("The fish escaped!");
                     }
 
+                    if (success)
+                        ApplyCatchEffects(fight.TreasureCollected);
+
                     pendingFishId = null;
+                    pendingTreasure = false;
                 }
             }
         }
