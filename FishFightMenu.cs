@@ -62,7 +62,7 @@ namespace SimpleFishingMod
             rippleTexture = CreateRippleTexture();
             treasureTexture = modEntry?.GetTreasureTexture() ?? throw new InvalidOperationException("treasure.png was not loaded.");
 
-            box = new Rectangle(400, 200, 300, 300);
+            box = new Rectangle(400, 200, 500, 500);
             bobberPos = new Vector2(box.Center.X, box.Center.Y);
 
             // 加载已截取的水面图片
@@ -181,9 +181,10 @@ namespace SimpleFishingMod
             float upDist = bobberPos.Y - box.Top;
 
             float minDist = Math.Min(leftDist, Math.Min(rightDist, upDist));
+            float threshold = Math.Min(box.Width, box.Height) * 0.24f;
             int dir;
 
-            if (minDist <= 120f)
+            if (minDist <= threshold)
             {
                 List<int> options = new();
                 if (leftDist == minDist) options.Add(0);
@@ -419,7 +420,7 @@ namespace SimpleFishingMod
                 }
 
                 // ? 3 秒内没拉到底 → 回到 Struggle（循环）
-                if (elapsed >= 3)
+                if (elapsed >= 5)
                 {
                     StartStrugglePhase();
                     return;
