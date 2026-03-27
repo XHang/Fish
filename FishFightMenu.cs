@@ -176,11 +176,30 @@ namespace SimpleFishingMod
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
             struggleSoundCooldown = 0f;
 
-            // ? 鱼速度调慢
-            int dir = rand.Next(3);
+            float leftDist = bobberPos.X - box.Left;
+            float rightDist = box.Right - bobberPos.X;
+            float upDist = bobberPos.Y - box.Top;
+
+            float minDist = Math.Min(leftDist, Math.Min(rightDist, upDist));
+            int dir;
+
+            if (minDist <= 120f)
+            {
+                List<int> options = new();
+                if (leftDist == minDist) options.Add(0);
+                if (upDist == minDist) options.Add(1);
+                if (rightDist == minDist) options.Add(2);
+
+                dir = options[rand.Next(options.Count)];
+            }
+            else
+            {
+                dir = rand.Next(3);
+            }
+
             if (dir == 0) fishVelocity = new Vector2(-0.6f, 0);
-            if (dir == 1) fishVelocity = new Vector2(0.6f, 0);
-            if (dir == 2) fishVelocity = new Vector2(0, -0.6f);
+            if (dir == 1) fishVelocity = new Vector2(0, -0.6f);
+            if (dir == 2) fishVelocity = new Vector2(0.6f, 0);
 
             // ? 不再重置鱼位置（保持上一轮的位置）
             // fishPos = new Vector2(box.Center.X, box.Center.Y);  <-- 删除
