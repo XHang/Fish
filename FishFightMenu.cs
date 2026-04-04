@@ -330,20 +330,17 @@ namespace SimpleFishingMod
 
         private bool IsConfiguredMoveKeyHeld(string bindingName)
         {
-            object? value = Game1.options.GetType().GetField(bindingName)?.GetValue(Game1.options)
-                ?? Game1.options.GetType().GetProperty(bindingName)?.GetValue(Game1.options);
-
-            if (value is not IEnumerable entries)
+            if (modEntry == null)
                 return false;
 
-            KeyboardState keyboardState = Keyboard.GetState();
-            foreach (object? entry in entries)
+            return bindingName switch
             {
-                if (entry != null && TryGetConfiguredKey(entry, out Keys configuredKey) && keyboardState.IsKeyDown(configuredKey))
-                    return true;
-            }
-
-            return false;
+                "moveLeftButton" => modEntry.IsBindingDown(modEntry.Config.MoveLeft),
+                "moveRightButton" => modEntry.IsBindingDown(modEntry.Config.MoveRight),
+                "moveUpButton" => modEntry.IsBindingDown(modEntry.Config.MoveUp),
+                "moveDownButton" => modEntry.IsBindingDown(modEntry.Config.MoveDown),
+                _ => false
+            };
         }
 
         private void disappearRipples(GameTime time)

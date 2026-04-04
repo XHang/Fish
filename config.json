@@ -1,0 +1,6 @@
+{
+  "MoveLeft": [ "A", "Left" ],
+  "MoveRight": [ "D", "Right" ],
+  "MoveUp": [ "W", "Up" ],
+  "MoveDown": [ "S", "Down" ]
+}
