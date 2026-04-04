@@ -53,7 +53,7 @@ namespace SimpleFishingMod
             public float Rotation;
         }
 
-        public FishFightMenu(Texture2D fishTex, Texture2D backgroundTex, ModEntry? modEntry = null, bool treasureAvailable = false)
+        public FishFightMenu(Texture2D fishTex, ModEntry modEntry, bool treasureAvailable)
         {
             fishTexture = fishTex;
             this.modEntry = modEntry;
@@ -62,22 +62,22 @@ namespace SimpleFishingMod
             rippleTexture = CreateRippleTexture();
             treasureTexture = modEntry?.GetTreasureTexture() ?? throw new InvalidOperationException("treasure.png was not loaded.");
 
-            box = new Rectangle(400, 200, 500, 500);
+            box = new Rectangle(400, 200, 900, 900); // 前两个参数是坐标，后两个参数是宽高
             bobberPos = new Vector2(box.Center.X, box.Center.Y);
-
-            // 加载已截取的水面图片
-            if (modEntry != null)
-            {
-                try
-                {
-                    waterTileTexture = modEntry.GetWaterTexture();
-                    System.Console.WriteLine($"Loaded water texture: {waterTileTexture?.Width}x{waterTileTexture?.Height}");
-                }
-                catch (Exception ex)
-                {
-                    System.Console.WriteLine($"Failed to load water texture: {ex.Message}");
-                }
+            if (modEntry == null){
+                throw new ArgumentNullException("modEntry cannot be null.");
             }
+         
+            try
+            {
+                waterTileTexture = modEntry.GetWaterTexture();
+                System.Console.WriteLine($"Loaded water texture: {waterTileTexture?.Width}x{waterTileTexture?.Height}");
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine($"Failed to load water texture: {ex.Message}");
+            }
+            
 
             StartStrugglePhase();
         }
@@ -179,31 +179,34 @@ namespace SimpleFishingMod
             float leftDist = bobberPos.X - box.Left;
             float rightDist = box.Right - bobberPos.X;
             float upDist = bobberPos.Y - box.Top;
+            float downDist = box.Bottom - bobberPos.Y;
 
-            float minDist = Math.Min(leftDist, Math.Min(rightDist, upDist));
-            float threshold = Math.Min(box.Width, box.Height) * 0.24f;
+            const float epsilon = 0.01f;
+            bool isCentered =
+                Math.Abs(leftDist - rightDist) <= epsilon &&
+                Math.Abs(upDist - downDist) <= epsilon;
+
             int dir;
 
-            if (minDist <= threshold)
-            {
-                List<int> options = new();
-                if (leftDist == minDist) options.Add(0);
-                if (upDist == minDist) options.Add(1);
-                if (rightDist == minDist) options.Add(2);
-
-                dir = options[rand.Next(options.Count)];
-            }
-            else
+            if (isCentered)
             {
                 dir = rand.Next(3);
             }
+            else
+            {
+                float minDist = Math.Min(leftDist, Math.Min(rightDist, upDist));
+                List<int> options = new();
+
+                if (Math.Abs(leftDist - minDist) <= epsilon) options.Add(0);
+                if (Math.Abs(upDist - minDist) <= epsilon) options.Add(1);
+                if (Math.Abs(rightDist - minDist) <= epsilon) options.Add(2);
+
+                dir = options[rand.Next(options.Count)];
+            }
 
             if (dir == 0) fishVelocity = new Vector2(-0.6f, 0);
-            if (dir == 1) fishVelocity = new Vector2(0, -0.6f);
-            if (dir == 2) fishVelocity = new Vector2(0.6f, 0);
-
-            // ? 不再重置鱼位置（保持上一轮的位置）
-            // fishPos = new Vector2(box.Center.X, box.Center.Y);  <-- 删除
+            else if (dir == 1) fishVelocity = new Vector2(0, -0.6f);
+            else fishVelocity = new Vector2(0.6f, 0);
         }
 
         private void StartPullPhase()
@@ -225,57 +228,27 @@ namespace SimpleFishingMod
             }
         }
 
-        private bool IsConfiguredMoveKey(string bindingName, Keys key)
+        private bool IsConfiguredMoveKey(IEnumerable entries, Keys key)
         {
-            object? value = Game1.options.GetType().GetField(bindingName)?.GetValue(Game1.options)
-                ?? Game1.options.GetType().GetProperty(bindingName)?.GetValue(Game1.options);
-
-            if (value is not IEnumerable entries)
-                return false;
-
-            foreach (object? entry in entries)
+            foreach (InputButton entry in entries)
             {
-                if (entry == null)
-                    continue;
-
-                if (EntryMatchesKey(entry, key))
+                if ( EntryMatchesKey(entry, key))
                     return true;
             }
 
             return false;
         }
-
-        private bool EntryMatchesKey(object entry, Keys key)
+        private bool EntryMatchesKey(InputButton entry, Keys key)
         {
-            string keyName = key.ToString();
-            string text = entry.ToString() ?? string.Empty;
-
-            if (text.Equals(keyName, StringComparison.OrdinalIgnoreCase)
-                || text.EndsWith($".{keyName}", StringComparison.OrdinalIgnoreCase)
-                || text.Contains($"{keyName}", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            foreach (string memberName in new[] { "Key", "Button", "button", "key" })
-            {
-                object? memberValue = entry.GetType().GetProperty(memberName)?.GetValue(entry)
-                    ?? entry.GetType().GetField(memberName)?.GetValue(entry);
-
-                if (memberValue != null && memberValue.ToString() == keyName)
-                    return true;
-            }
-
-            return false;
+            return entry.key == key;
+            
         }
 
-        private bool IsMoveLeftKey(Keys key) => IsConfiguredMoveKey("moveLeftButton", key);
 
-        private bool IsMoveRightKey(Keys key) => IsConfiguredMoveKey("moveRightButton", key);
-
-        private bool IsMoveUpKey(Keys key) => IsConfiguredMoveKey("moveUpButton", key);
-
-        private bool IsMoveDownKey(Keys key) => IsConfiguredMoveKey("moveDownButton", key);
+        private bool IsMoveLeftKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveLeftButton, key);
+        private bool IsMoveRightKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveRightButton, key);
+        private bool IsMoveUpKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveUpButton, key);
+        private bool IsMoveDownKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveDownButton, key);
 
         private bool TryGetConfiguredKey(object entry, out Keys configuredKey)
         {
@@ -319,12 +292,135 @@ namespace SimpleFishingMod
 
             if (Finished) return;
 
+         
+
+            generateRipples(time);
+
+            disappearRipples(time);
+
+            double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
+            switch (currentPhase)
+            {
+                case Phase.Struggle:
+                    struggle(time, elapsed);
+                    break;
+                case Phase.Pull:
+                    pull(time, elapsed);
+                    break;
+                
+
+            }
+        }
+
+        private bool pull(GameTime time, double elapsed)
+        {
+            float elapsedSeconds = (float)time.ElapsedGameTime.TotalSeconds;
+            if (pullSoundCooldown > 0f)
+                pullSoundCooldown -= elapsedSeconds;
+            bool isPullingDown = IsConfiguredMoveKeyHeld("moveDownButton");
+
+            if (isPullingDown && pullSoundCooldown <= 0f)
+            {
+                Game1.playSound("fishingRodBend");
+                pullSoundCooldown = 0.08f;
+            }
+
+            if (treasureSpawned && !treasureCollected)
+            {
+                Rectangle treasureRect = new Rectangle((int)treasurePos.X - 12, (int)treasurePos.Y - 12, 24, 24);
+                Rectangle bobberRect = new Rectangle((int)bobberPos.X - 12, (int)bobberPos.Y - 12, 24, 24);
+
+                if (treasureRect.Intersects(bobberRect))
+                    treasureHoldTime += (float)time.ElapsedGameTime.TotalSeconds;
+                else
+                    treasureHoldTime = 0f;
+
+                if (treasureHoldTime >= TreasureHoldSeconds)
+                {
+                    treasureCollected = true;
+                    Game1.playSound("newArtifact");
+                }
+            }
+
+            // ? 3 秒内没拉到底 → 回到 Struggle（循环）
+            if (elapsed >= 5)
+            {
+                StartStrugglePhase();
+                return false;
+            }
+
+            // 拉到底 → 成功
+            if (bobberPos.Y >= box.Bottom - 20)
+            {
+                Finished = true;
+                Success = true;
+                return false;
+            }
+
+            if (treasureSpawned && !treasureCollected)
+            {
+                // treasure disappears if not collected during this pull window
+                if (currentPhase != Phase.Pull)
+                    treasureSpawned = false;
+            }
+
+            return true;
+        }
+
+        private bool struggle(GameTime time, double elapsed)
+        {
             float elapsedSeconds = (float)time.ElapsedGameTime.TotalSeconds;
             if (struggleSoundCooldown > 0f)
                 struggleSoundCooldown -= elapsedSeconds;
-            if (pullSoundCooldown > 0f)
-                pullSoundCooldown -= elapsedSeconds;
+            if (struggleSoundCooldown <= 0f)
+            {
+                Game1.playSound("waterSlosh");
+                struggleSoundCooldown = 0.22f;
+            }
 
+            bobberPos += fishVelocity;
+
+            // 只要触到底边，直接判定成功
+            if (bobberPos.Y >= box.Bottom - 20)
+            {
+                Finished = true;
+                Success = true;
+                return false;
+            }
+
+            // 鱼逃出框 → 失败
+            if (!box.Contains(bobberPos))
+            {
+                Finished = true;
+                Success = false;
+                return false;
+            }
+
+            // 5 秒挣扎结束 → 进入 Pull 阶段
+            if (elapsed >= 5)
+            {
+                StartPullPhase();
+            }
+
+            return true;
+        }
+
+        private void disappearRipples(GameTime time)
+        {
+            for (int i = ripples.Count - 1; i >= 0; i--)
+            {
+                RippleParticle ripple = ripples[i];
+                ripple.Life -= (float)time.ElapsedGameTime.TotalSeconds;
+
+                if (ripple.Life <= 0)
+                    ripples.RemoveAt(i);
+                else
+                    ripples[i] = ripple;
+            }
+        }
+
+        private void generateRipples(GameTime time)
+        {
             wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
 
             float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0f;
@@ -345,101 +441,6 @@ namespace SimpleFishingMod
                     EndScale = 1.0f + (float)rand.NextDouble() * 0.45f,
                     Rotation = (float)(rand.NextDouble() * Math.PI * 2),
                 });
-            }
-
-            for (int i = ripples.Count - 1; i >= 0; i--)
-            {
-                RippleParticle ripple = ripples[i];
-                ripple.Life -= (float)time.ElapsedGameTime.TotalSeconds;
-
-                if (ripple.Life <= 0)
-                    ripples.RemoveAt(i);
-                else
-                    ripples[i] = ripple;
-            }
-
-            double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
-
-            if (currentPhase == Phase.Struggle)
-            {
-                if (struggleSoundCooldown <= 0f)
-                {
-                    Game1.playSound("waterSlosh");
-                    struggleSoundCooldown = 0.22f;
-                }
-
-                bobberPos += fishVelocity;
-
-                // 只要触到底边，直接判定成功
-                if (bobberPos.Y >= box.Bottom - 20)
-                {
-                    Finished = true;
-                    Success = true;
-                    return;
-                }
-
-                // 鱼逃出框 → 失败
-                if (!box.Contains(bobberPos))
-                {
-                    Finished = true;
-                    Success = false;
-                    return;
-                }
-
-                // 5 秒挣扎结束 → 进入 Pull 阶段
-                if (elapsed >= 5)
-                {
-                    StartPullPhase();
-                }
-            }
-            else if (currentPhase == Phase.Pull)
-            {
-                bool isPullingDown = IsConfiguredMoveKeyHeld("moveDownButton");
-
-                if (isPullingDown && pullSoundCooldown <= 0f)
-                {
-                    Game1.playSound("fishingRodBend");
-                    pullSoundCooldown = 0.08f;
-                }
-
-                if (treasureSpawned && !treasureCollected)
-                {
-                    Rectangle treasureRect = new Rectangle((int)treasurePos.X - 12, (int)treasurePos.Y - 12, 24, 24);
-                    Rectangle bobberRect = new Rectangle((int)bobberPos.X - 12, (int)bobberPos.Y - 12, 24, 24);
-
-                    if (treasureRect.Intersects(bobberRect))
-                        treasureHoldTime += (float)time.ElapsedGameTime.TotalSeconds;
-                    else
-                        treasureHoldTime = 0f;
-
-                    if (treasureHoldTime >= TreasureHoldSeconds)
-                    {
-                        treasureCollected = true;
-                        Game1.playSound("newArtifact");
-                    }
-                }
-
-                // ? 3 秒内没拉到底 → 回到 Struggle（循环）
-                if (elapsed >= 5)
-                {
-                    StartStrugglePhase();
-                    return;
-                }
-
-                // 拉到底 → 成功
-                if (bobberPos.Y >= box.Bottom - 20)
-                {
-                    Finished = true;
-                    Success = true;
-                    return;
-                }
-
-            if (treasureSpawned && !treasureCollected)
-            {
-                // treasure disappears if not collected during this pull window
-                if (currentPhase != Phase.Pull)
-                    treasureSpawned = false;
-            }
             }
         }
 
