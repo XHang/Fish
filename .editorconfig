@@ -1,0 +1,4 @@
+﻿[*.cs]
+
+# CA2255: The 'ModuleInitializer' attribute should not be used in libraries
+dotnet_diagnostic.CA2255.severity = silent

@@ -1,8 +1,8 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using StardewValley;
 using StardewValley.Menus;
-using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -12,7 +12,7 @@ namespace SimpleFishingMod
     public class FishFightMenu : IClickableMenu
     {
         private Texture2D fishTexture;
-        private Texture2D? waterTileTexture;  // ¥” beach tileset Ã·»°µƒÀÆ√ÊÃ˘Õº
+        private Texture2D? waterTileTexture;  // ‰ªé beach tileset ÊèêÂèñÁöÑÊ∞¥Èù¢Ë¥¥Âõæ
         private Texture2D bobberTexture;
         private Texture2D rippleTexture;
         private Texture2D treasureTexture;
@@ -24,23 +24,45 @@ namespace SimpleFishingMod
 
         private Vector2 fishVelocity;
         private double phaseStartTime;
+        private readonly Random rand = new();
 
-        private Random rand = new Random();
-        
         private ModEntry? modEntry;
         private float wobbleTime;
         private float struggleSoundCooldown;
         private float pullSoundCooldown;
-        private List<RippleParticle> ripples = new();
+        private readonly List<RippleParticle> ripples = new();
         private readonly bool treasureAvailable;
         private bool treasureSpawned;
         private bool treasureCollected;
         private Vector2 treasurePos;
         private float treasureHoldTime;
         private const float TreasureHoldSeconds = 3f;
+        private const float StruggleSoundCooldownSeconds = 0.22f;
+        private const float PullSoundCooldownSeconds = 0.08f;
+        private bool wasMoveLeftHeld;
+        private bool wasMoveRightHeld;
+        private bool wasMoveUpHeld;
+        private bool wasMoveDownHeld;
+        private const float RippleWobbleStrength = 1f;
+        private const float RippleWobbleFrequency = 180f;
+        private const float RippleWobbleAmplitude = 2f;
+        private const float RippleLifeBase = 3.22f;
+        private const float RippleLifeVariance = 0.16f;
+        private const float RippleMaxLifeBase = 8.22f;
+        private const float RippleMaxLifeVariance = 0.16f;
+        private const float RippleStartScaleBase = 0.15f;
+        private const float RippleStartScaleVariance = 0.08f;
+        private const float RippleEndScaleBase = 1.0f;
+        private const float RippleEndScaleVariance = 0.45f;
+        private const int StruggleRippleSpawnMin = 1;
+        private const int StruggleRippleSpawnMax = 2;
+        private const int PullRippleSpawnMin = 0;
+        private const int PullRippleSpawnMax = 1;
+        private diffidcultTemplate diffidcultTemp;
 
         public bool Finished = false;
         public bool Success = false;
+        public BobberBar bar; //ÂéüÁâàÈíìÈ±ºÂ∞èÊ∏∏ÊàèÂÆû‰æã
         public bool TreasureCollected => treasureCollected;
 
         private class RippleParticle
@@ -53,21 +75,33 @@ namespace SimpleFishingMod
             public float Rotation;
         }
 
-        public FishFightMenu(Texture2D fishTex, ModEntry modEntry, bool treasureAvailable)
+        private Texture2D CreateFishTexture(string fishId)
         {
-            fishTexture = fishTex;
+            StardewValley.Object fishObj = new StardewValley.Object(fishId, 1);
+            Rectangle src = Game1.getSourceRectForStandardTileSheet(Game1.objectSpriteSheet, fishObj.ParentSheetIndex, 16, 16);
+            Texture2D fishTex = new Texture2D(Game1.graphics.GraphicsDevice, 16, 16);
+            Color[] data = new Color[16 * 16];
+            Game1.objectSpriteSheet.GetData(0, src, data, 0, data.Length);
+            fishTex.SetData(data);
+            return fishTex;
+        }
+
+        public FishFightMenu(BobberBar bar, ModEntry modEntry, bool treasureAvailable)
+        {
+            this.bar = bar;
+            fishTexture = CreateFishTexture(bar.whichFish);
             this.modEntry = modEntry;
             this.treasureAvailable = treasureAvailable;
+            diffidcultTemp = CreateDifficultyTemplate(bar);
             bobberTexture = CreateBobberTexture();
             rippleTexture = CreateRippleTexture();
             treasureTexture = modEntry?.GetTreasureTexture() ?? throw new InvalidOperationException("treasure.png was not loaded.");
 
-            box = new Rectangle(400, 200, 900, 900); // «∞¡Ω∏ˆ≤Œ ˝ «◊¯±Í£¨∫Û¡Ω∏ˆ≤Œ ˝ «øÌ∏ﬂ
+            box = new Rectangle(400, 200, 500, 500); // Ââç‰∏§‰∏™ÂèÇÊï∞ÊòØÂùêÊ†áÔºåÂêé‰∏§‰∏™ÂèÇÊï∞ÊòØÂÆΩÈ´ò
             bobberPos = new Vector2(box.Center.X, box.Center.Y);
-            if (modEntry == null){
-                throw new ArgumentNullException("modEntry cannot be null.");
-            }
-         
+            if (modEntry == null)
+                throw new ArgumentNullException(nameof(modEntry));
+
             try
             {
                 waterTileTexture = modEntry.GetWaterTexture();
@@ -77,9 +111,13 @@ namespace SimpleFishingMod
             {
                 System.Console.WriteLine($"Failed to load water texture: {ex.Message}");
             }
-            
 
             StartStrugglePhase();
+        }
+
+        private diffidcultTemplate CreateDifficultyTemplate(BobberBar bar)
+        {
+            return DifficultyTemplateRegistry.Create(bar);
         }
 
         private Texture2D CreateBobberTexture()
@@ -99,9 +137,7 @@ namespace SimpleFishingMod
 
                     if (distance <= radius)
                     {
-                        color = y < center.Y
-                            ? new Color(245, 245, 245)
-                            : new Color(215, 40, 40);
+                        color = y < center.Y ? new Color(245, 245, 245) : new Color(215, 40, 40);
 
                         if (distance >= radius - 1f)
                             color = new Color(25, 25, 25);
@@ -170,11 +206,37 @@ namespace SimpleFishingMod
             return texture;
         }
 
+        public override void update(GameTime time)
+        {
+            base.update(time);
+            if (Finished)
+                return;
+
+            HandleTapMovement();
+            generateRipples(time);
+            disappearRipples(time);
+
+            double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
+            switch (currentPhase)
+            {
+                case Phase.Struggle:
+                    struggle(time, elapsed);
+                    break;
+                case Phase.Pull:
+                    pull(time, elapsed);
+                    break;
+            }
+        }
+
         private void StartStrugglePhase()
         {
             currentPhase = Phase.Struggle;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
-            struggleSoundCooldown = 0f;
+            struggleSoundCooldown = StruggleSoundCooldownSeconds;
+            wasMoveLeftHeld = false;
+            wasMoveRightHeld = false;
+            wasMoveUpHeld = false;
+            wasMoveDownHeld = false;
 
             float leftDist = bobberPos.X - box.Left;
             float rightDist = box.Right - bobberPos.X;
@@ -182,12 +244,9 @@ namespace SimpleFishingMod
             float downDist = box.Bottom - bobberPos.Y;
 
             const float epsilon = 0.01f;
-            bool isCentered =
-                Math.Abs(leftDist - rightDist) <= epsilon &&
-                Math.Abs(upDist - downDist) <= epsilon;
+            bool isCentered = Math.Abs(leftDist - rightDist) <= epsilon && Math.Abs(upDist - downDist) <= epsilon;
 
             int dir;
-
             if (isCentered)
             {
                 dir = rand.Next(3);
@@ -196,24 +255,26 @@ namespace SimpleFishingMod
             {
                 float minDist = Math.Min(leftDist, Math.Min(rightDist, upDist));
                 List<int> options = new();
-
                 if (Math.Abs(leftDist - minDist) <= epsilon) options.Add(0);
                 if (Math.Abs(upDist - minDist) <= epsilon) options.Add(1);
                 if (Math.Abs(rightDist - minDist) <= epsilon) options.Add(2);
-
                 dir = options[rand.Next(options.Count)];
             }
 
-            if (dir == 0) fishVelocity = new Vector2(-0.6f, 0);
-            else if (dir == 1) fishVelocity = new Vector2(0, -0.6f);
-            else fishVelocity = new Vector2(0.6f, 0);
+            if (dir == 0) fishVelocity = new Vector2(-diffidcultTemp.StruggleFishSpeed, 0);
+            else if (dir == 1) fishVelocity = new Vector2(0, -diffidcultTemp.StruggleFishSpeed);
+            else fishVelocity = new Vector2(diffidcultTemp.StruggleFishSpeed, 0);
         }
 
         private void StartPullPhase()
         {
             currentPhase = Phase.Pull;
             phaseStartTime = Game1.currentGameTime.TotalGameTime.TotalSeconds;
-            pullSoundCooldown = 0f;
+            pullSoundCooldown = PullSoundCooldownSeconds;
+            wasMoveLeftHeld = false;
+            wasMoveRightHeld = false;
+            wasMoveUpHeld = false;
+            wasMoveDownHeld = false;
 
             if (treasureAvailable && !treasureSpawned && !treasureCollected)
             {
@@ -232,18 +293,17 @@ namespace SimpleFishingMod
         {
             foreach (InputButton entry in entries)
             {
-                if ( EntryMatchesKey(entry, key))
+                if (EntryMatchesKey(entry, key))
                     return true;
             }
 
             return false;
         }
+
         private bool EntryMatchesKey(InputButton entry, Keys key)
         {
             return entry.key == key;
-            
         }
-
 
         private bool IsMoveLeftKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveLeftButton, key);
         private bool IsMoveRightKey(Keys key) => IsConfiguredMoveKey(Game1.options.moveRightButton, key);
@@ -286,30 +346,75 @@ namespace SimpleFishingMod
             return false;
         }
 
-        public override void update(GameTime time)
+        private void disappearRipples(GameTime time)
         {
-            base.update(time);
-
-            if (Finished) return;
-
-         
-
-            generateRipples(time);
-
-            disappearRipples(time);
-
-            double elapsed = time.TotalGameTime.TotalSeconds - phaseStartTime;
-            switch (currentPhase)
+            for (int i = ripples.Count - 1; i >= 0; i--)
             {
-                case Phase.Struggle:
-                    struggle(time, elapsed);
-                    break;
-                case Phase.Pull:
-                    pull(time, elapsed);
-                    break;
-                
+                RippleParticle ripple = ripples[i];
+                ripple.Life -= (float)time.ElapsedGameTime.TotalSeconds;
 
+                if (ripple.Life <= 0)
+                    ripples.RemoveAt(i);
+                else
+                    ripples[i] = ripple;
             }
+        }
+
+        private void generateRipples(GameTime time)
+        {
+            wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
+
+            float wobbleStrength = currentPhase == Phase.Struggle ? RippleWobbleStrength : 0f;
+            float wobbleFrequency = RippleWobbleFrequency;
+            float wobbleAmplitude = RippleWobbleAmplitude;
+            Vector2 bobberOffset = new Vector2(
+                (float)Math.Sin(wobbleTime * wobbleFrequency) * wobbleAmplitude * wobbleStrength + (float)Math.Cos(wobbleTime * wobbleFrequency) * wobbleAmplitude * wobbleStrength,
+                (float)Math.Cos(wobbleTime * wobbleFrequency) * wobbleAmplitude * wobbleStrength + (float)Math.Sin(wobbleTime * wobbleFrequency) * wobbleAmplitude * wobbleStrength
+            );
+
+            int spawnCount = currentPhase == Phase.Struggle
+                ? rand.Next(StruggleRippleSpawnMin, StruggleRippleSpawnMax + 1)
+                : rand.Next(PullRippleSpawnMin, PullRippleSpawnMax + 1);
+
+            for (int s = 0; s < spawnCount; s++)
+            {
+                ripples.Add(new RippleParticle
+                {
+                    Position = bobberPos + bobberOffset + new Vector2((float)(rand.NextDouble() - 0.5) * 4f, (float)(rand.NextDouble() - 0.5) * 4f),
+                    Life = RippleLifeBase + (float)rand.NextDouble() * RippleLifeVariance,
+                    MaxLife = RippleMaxLifeBase + (float)rand.NextDouble() * RippleMaxLifeVariance,
+                    StartScale = RippleStartScaleBase + (float)rand.NextDouble() * RippleStartScaleVariance,
+                    EndScale = RippleEndScaleBase + (float)rand.NextDouble() * RippleEndScaleVariance,
+                    Rotation = (float)(rand.NextDouble() * Math.PI * 2),
+                });
+            }
+        }
+
+        private void HandleTapMovement()
+        {
+            if (currentPhase != Phase.Struggle && currentPhase != Phase.Pull)
+                return;
+
+            bool leftHeld = IsConfiguredMoveKeyHeld("moveLeftButton");
+            bool rightHeld = IsConfiguredMoveKeyHeld("moveRightButton");
+            bool upHeld = IsConfiguredMoveKeyHeld("moveUpButton");
+            bool downHeld = IsConfiguredMoveKeyHeld("moveDownButton");
+
+            if (leftHeld && !wasMoveLeftHeld) bobberPos.X -= 4;
+            if (rightHeld && !wasMoveRightHeld) bobberPos.X += 4;
+            if (upHeld && !wasMoveUpHeld) bobberPos.Y -= 4;
+            if (downHeld && !wasMoveDownHeld) bobberPos.Y += 4;
+
+            wasMoveLeftHeld = leftHeld;
+            wasMoveRightHeld = rightHeld;
+            wasMoveUpHeld = upHeld;
+            wasMoveDownHeld = downHeld;
+        }
+
+        public override void receiveKeyPress(Keys key)
+        {
+            if (Finished)
+                return;
         }
 
         private bool pull(GameTime time, double elapsed)
@@ -317,12 +422,12 @@ namespace SimpleFishingMod
             float elapsedSeconds = (float)time.ElapsedGameTime.TotalSeconds;
             if (pullSoundCooldown > 0f)
                 pullSoundCooldown -= elapsedSeconds;
-            bool isPullingDown = IsConfiguredMoveKeyHeld("moveDownButton");
 
+            bool isPullingDown = IsConfiguredMoveKeyHeld("moveDownButton");
             if (isPullingDown && pullSoundCooldown <= 0f)
             {
                 Game1.playSound("fishingRodBend");
-                pullSoundCooldown = 0.08f;
+                pullSoundCooldown = PullSoundCooldownSeconds;
             }
 
             if (treasureSpawned && !treasureCollected)
@@ -342,14 +447,14 @@ namespace SimpleFishingMod
                 }
             }
 
-            // ? 3 √Îƒ⁄√ª¿≠µΩµ◊ °˙ ªÿµΩ Struggle£®—≠ª∑£©
-            if (elapsed >= 5)
+            // ? 3 ÁßíÂÜÖÊ≤°ÊãâÂà∞Â∫ï ‚Üí ÂõûÂà∞ StruggleÔºàÂæ™ÁéØÔºâ
+            if (elapsed >= diffidcultTemp.PullPhaseDurationSeconds)
             {
                 StartStrugglePhase();
                 return false;
             }
 
-            // ¿≠µΩµ◊ °˙ ≥…π¶
+            // ÊãâÂà∞Â∫ï ‚Üí ÊàêÂäü
             if (bobberPos.Y >= box.Bottom - 20)
             {
                 Finished = true;
@@ -357,11 +462,10 @@ namespace SimpleFishingMod
                 return false;
             }
 
-            if (treasureSpawned && !treasureCollected)
+            if (treasureSpawned && !treasureCollected && currentPhase != Phase.Pull)
             {
                 // treasure disappears if not collected during this pull window
-                if (currentPhase != Phase.Pull)
-                    treasureSpawned = false;
+                treasureSpawned = false;
             }
 
             return true;
@@ -375,12 +479,12 @@ namespace SimpleFishingMod
             if (struggleSoundCooldown <= 0f)
             {
                 Game1.playSound("waterSlosh");
-                struggleSoundCooldown = 0.22f;
+                struggleSoundCooldown = StruggleSoundCooldownSeconds;
             }
 
             bobberPos += fishVelocity;
 
-            // ÷ª“™¥•µΩµ◊±ﬂ£¨÷±Ω”≈–∂®≥…π¶
+            // Âè™Ë¶ÅËß¶Âà∞Â∫ïËæπÔºåÁõ¥Êé•Âà§ÂÆöÊàêÂäü
             if (bobberPos.Y >= box.Bottom - 20)
             {
                 Finished = true;
@@ -388,7 +492,7 @@ namespace SimpleFishingMod
                 return false;
             }
 
-            // ”„Ã”≥ˆøÚ °˙  ß∞‹
+            // È±ºÈÄÉÂá∫Ê°Ü ‚Üí Â§±Ë¥•
             if (!box.Contains(bobberPos))
             {
                 Finished = true;
@@ -396,97 +500,22 @@ namespace SimpleFishingMod
                 return false;
             }
 
-            // 5 √Î’ı‘˙Ω· ¯ °˙ Ω¯»Î Pull Ω◊∂Œ
-            if (elapsed >= 5)
-            {
+            // 5 ÁßíÊå£ÊâéÁªìÊùü ‚Üí ËøõÂÖ• Pull Èò∂ÊÆµ
+            if (elapsed >= diffidcultTemp.StrugglePhaseDurationSeconds)
                 StartPullPhase();
-            }
 
             return true;
         }
 
-        private void disappearRipples(GameTime time)
-        {
-            for (int i = ripples.Count - 1; i >= 0; i--)
-            {
-                RippleParticle ripple = ripples[i];
-                ripple.Life -= (float)time.ElapsedGameTime.TotalSeconds;
-
-                if (ripple.Life <= 0)
-                    ripples.RemoveAt(i);
-                else
-                    ripples[i] = ripple;
-            }
-        }
-
-        private void generateRipples(GameTime time)
-        {
-            wobbleTime += (float)time.ElapsedGameTime.TotalSeconds;
-
-            float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0f;
-            Vector2 bobberOffset = new Vector2(
-                (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength,
-                (float)Math.Cos(wobbleTime * 180f) * 2f * wobbleStrength + (float)Math.Sin(wobbleTime * 180f) * 2f * wobbleStrength
-            );
-
-            int spawnCount = currentPhase == Phase.Struggle ? rand.Next(1, 3) : rand.Next(0, 2);
-            for (int s = 0; s < spawnCount; s++)
-            {
-                ripples.Add(new RippleParticle
-                {
-                    Position = bobberPos + bobberOffset + new Vector2((float)(rand.NextDouble() - 0.5) * 4f, (float)(rand.NextDouble() - 0.5) * 4f),
-                    Life = 3.22f + (float)rand.NextDouble() * 0.16f,
-                    MaxLife = 8.22f + (float)rand.NextDouble() * 0.16f,
-                    StartScale = 0.15f + (float)rand.NextDouble() * 0.08f,
-                    EndScale = 1.0f + (float)rand.NextDouble() * 0.45f,
-                    Rotation = (float)(rand.NextDouble() * Math.PI * 2),
-                });
-            }
-        }
-
-        public override void receiveKeyPress(Keys key)
-        {
-            if (Finished) return;
-
-            if (currentPhase == Phase.Struggle)
-            {
-                if (IsMoveLeftKey(key)) bobberPos.X -= 4;
-                if (IsMoveRightKey(key)) bobberPos.X += 4;
-                if (IsMoveUpKey(key)) bobberPos.Y -= 4;
-                if (IsMoveDownKey(key)) bobberPos.Y += 4;
-            }
-            else if (currentPhase == Phase.Pull)
-            {
-                if (IsMoveLeftKey(key)) bobberPos.X -= 4;
-                if (IsMoveRightKey(key)) bobberPos.X += 4;
-                if (IsMoveUpKey(key)) bobberPos.Y -= 4;
-                if (IsMoveDownKey(key)) bobberPos.Y += 4;
-            }
-        }
-
         public override void draw(SpriteBatch b)
         {
-            // ªÊ÷∆±ﬂøÚ
-            IClickableMenu.drawTextureBox(
-                b,
-                Game1.menuTexture,
-                new Rectangle(0, 256, 60, 60),
-                box.X - 16,
-                box.Y - 16,
-                box.Width + 32,
-                box.Height + 32,
-                Color.Green,
-                1f
-            );
+            // ÁªòÂà∂ËæπÊ°Ü
+            IClickableMenu.drawTextureBox(b, Game1.menuTexture, new Rectangle(0, 256, 60, 60), box.X - 16, box.Y - 16, box.Width + 32, box.Height + 32, Color.Green, 1f);
 
-            // ÷±Ω”ªÊ÷∆ÀÆ√ÊŒ∆¿Ì£®300x300£¨Œﬁ–Ë¿≠…ÏªÚ∆Ω∆Ã£©
+            // Áõ¥Êé•ÁªòÂà∂Ê∞¥Èù¢Á∫πÁêÜÔºà300x300ÔºåÊó†ÈúÄÊãâ‰º∏ÊàñÂπ≥Èì∫Ôºâ
             if (waterTileTexture != null)
             {
-                b.Draw(
-                    waterTileTexture,
-                    box,
-                    Color.White
-                );
+                b.Draw(waterTileTexture, box, Color.White);
             }
 
             if (treasureSpawned && !treasureCollected)
@@ -501,17 +530,7 @@ namespace SimpleFishingMod
                 float progress = 1f - MathHelper.Clamp(ripple.Life / ripple.MaxLife, 0f, 1f);
                 float alpha = (1f - progress) * 0.85f;
                 float scale = MathHelper.Lerp(ripple.StartScale, ripple.EndScale, progress);
-                b.Draw(
-                    rippleTexture,
-                    ripple.Position,
-                    null,
-                    Color.White * alpha,
-                    ripple.Rotation,
-                    new Vector2(rippleTexture.Width / 2f, rippleTexture.Height / 2f),
-                    scale,
-                    SpriteEffects.None,
-                    1f
-                );
+                b.Draw(rippleTexture, ripple.Position, null, Color.White * alpha, ripple.Rotation, new Vector2(rippleTexture.Width / 2f, rippleTexture.Height / 2f), scale, SpriteEffects.None, 1f);
             }
 
             float wobbleStrength = currentPhase == Phase.Struggle ? 1f : 0f;
@@ -523,25 +542,10 @@ namespace SimpleFishingMod
             Vector2 bobberDrawPos = bobberPos + bobberOffset;
             Vector2 fishDrawPos = bobberDrawPos + new Vector2(0f, 34f);
 
-            // ªÊ÷∆∏°±Í
-            b.Draw(
-                bobberTexture,
-                bobberDrawPos,
-                null,
-                Color.White,
-                (float)Math.Sin(wobbleTime * 34f) * 0.08f * wobbleStrength,
-                new Vector2(bobberTexture.Width / 2f, bobberTexture.Height / 2f),
-                2f,
-                SpriteEffects.None,
-                1f
-            );
+            // ÁªòÂà∂ÊµÆÊ†á
+            b.Draw(bobberTexture, bobberDrawPos, null, Color.White, (float)Math.Sin(wobbleTime * 34f) * 0.08f * wobbleStrength, new Vector2(bobberTexture.Width / 2f, bobberTexture.Height / 2f), 2f, SpriteEffects.None, 1f);
 
-            Rectangle fishBounds = new Rectangle(
-                (int)(fishDrawPos.X - fishTexture.Width),
-                (int)(fishDrawPos.Y - fishTexture.Height),
-                fishTexture.Width * 2,
-                fishTexture.Height * 2
-            );
+            Rectangle fishBounds = new Rectangle((int)(fishDrawPos.X - fishTexture.Width), (int)(fishDrawPos.Y - fishTexture.Height), fishTexture.Width * 2, fishTexture.Height * 2);
             Rectangle clippedFishBounds = Rectangle.Intersect(fishBounds, box);
 
             if (clippedFishBounds.Width > 0 && clippedFishBounds.Height > 0)
@@ -555,16 +559,7 @@ namespace SimpleFishingMod
                     Math.Min(fishTexture.Height, (int)Math.Ceiling(clippedFishBounds.Height / scale))
                 );
 
-                b.Draw(
-                    fishTexture,
-                    clippedFishBounds,
-                    source,
-                    Color.White,
-                    0f,
-                    Vector2.Zero,
-                    SpriteEffects.None,
-                    1f
-                );
+                b.Draw(fishTexture, clippedFishBounds, source, Color.White, 0f, Vector2.Zero, SpriteEffects.None, 1f);
             }
 
             base.draw(b);

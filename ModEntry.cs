@@ -18,7 +18,7 @@ namespace SimpleFishingMod
 
         private Texture2D? waterTexture = null;
         private Texture2D? treasureTexture = null;
-        private BobberBar? suspendedBobberBar = null; // 暂存原版的钓鱼小游戏实例
+      
         private bool? pendingBobberBarResult = null; // 自制小游戏结束后要强制设置的 BobberBar 结果（成功/失败），在 UpdateTicked 中检测到 BobberBar 恢复时应用
         private bool resolvingBobberBar = false; //游戏是否正在结算钓鱼结果
 
@@ -30,9 +30,13 @@ namespace SimpleFishingMod
         public override void Entry(IModHelper helper)
         {
             Instance = this;
-         
+
             new Harmony(this.ModManifest.UniqueID).PatchAll();
-            
+
+            DifficultyTemplateRegistry.Register(_ => new Easy());
+            DifficultyTemplateRegistry.Register(_ => new Medium());
+            DifficultyTemplateRegistry.Register(_ => new Hard());
+
             // 直接加载 water.png
             try
             {
@@ -123,10 +127,11 @@ namespace SimpleFishingMod
             }
 
             var treasure = bar.treasure;
-            var fishTex = CreateFishTexture(bar.whichFish);
+           
 
-            suspendedBobberBar = bar;
-            Game1.activeClickableMenu = new FishFightMenu(fishTex, this, treasure);
+          
+
+            Game1.activeClickableMenu = new FishFightMenu(bar, this, treasure);
             waitingForMiniGame = true;
 
             return true;
@@ -142,17 +147,16 @@ namespace SimpleFishingMod
 
             if (!fight.Finished)
                 return;
+          
+            FishFightMenu m = (FishFightMenu)Game1.activeClickableMenu;
 
-            waitingForMiniGame = false;
-
-            if (suspendedBobberBar != null)
+            if (m.bar != null)
             {
                 if (fight.Success)
-                    suspendedBobberBar.treasureCaught = fight.TreasureCollected;
-
-                Game1.activeClickableMenu = suspendedBobberBar;
-                pendingBobberBarResult = fight.Success;
-                suspendedBobberBar = null;
+                    m.bar.treasureCaught = fight.TreasureCollected;
+                waitingForMiniGame = false;
+                Game1.activeClickableMenu = m.bar;
+                pendingBobberBarResult = fight.Success;          
                 resolvingBobberBar = true;
                 return;
             }
@@ -164,21 +168,7 @@ namespace SimpleFishingMod
                 Game1.showRedMessage("The fish escaped!");
         }
 
-        private Texture2D CreateFishTexture(string fishId)
-        {
-            StardewValley.Object fishObj = new StardewValley.Object(fishId, 1);
-            Rectangle src = Game1.getSourceRectForStandardTileSheet(
-                Game1.objectSpriteSheet,
-                fishObj.ParentSheetIndex,
-                16, 16);
-
-            Texture2D fishTex = new Texture2D(Game1.graphics.GraphicsDevice, 16, 16);
-            Color[] data = new Color[16 * 16];
-            Game1.objectSpriteSheet.GetData(0, src, data, 0, data.Length);
-            fishTex.SetData(data);
-
-            return fishTex;
-        }
+    
     }
 
     [HarmonyPatch(typeof(BobberBar), nameof(BobberBar.draw))]
