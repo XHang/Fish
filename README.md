@@ -36,3 +36,7 @@ If you make the fish reach the location, you can get it after catching the fish.
   - Trap Bobber: decrease the speed of the fish's struggle by 20% 
   - Cork Bobber: add a 50% chance to stop the fish's struggle for 3 second
   - Barbed Hook: add a 50% chance to make the fish pick downward direction when it starts to struggle
+- NEW GAME+: How about throwing the rectangle away and playing the mini-game in the original scene? How does it work?
+Well, when the mini-game starts, the original mini-game will be Hang up just like before, but now you can control the buoy in the water.
+Everything just acts like before, but without the rectangle, how can we determine whether the fish is caught or escapes?
+New Mechanism
